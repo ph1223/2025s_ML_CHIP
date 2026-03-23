@@ -1,0 +1,293 @@
+#ifndef UTILS_H
+#define UTILS_H
+
+#include <systemc.h>
+#include <iostream>
+#include <fstream>
+#include <vector>
+#include <Layer_param.h>
+
+using namespace std;
+
+typedef vector<float> vec_1d;
+typedef vector<vec_1d> vec_2d;
+typedef vector<vec_2d> vec_3d;
+typedef vector<vec_3d> vec_4d;
+
+sc_lv<32> float_to_sc_lv32(float value);
+float sc_lv32_to_float(const sc_lv<32> lv);
+
+float* padding(float* );
+vec_1d convert1dToTensor1d(float* , int);
+float* convertTensor1dTo1d(const vec_1d&, int );
+vec_3d convert1dTo3d(float* , int, int, int);
+float* convert3dTo1d(const vec_3d&, int, int, int);
+vec_2d convert1dTo2dvec(const float* , int , int );
+vec_1d convert3dTo1dvec(const vec_3d&, int, int, int);
+vec_4d convert1dTo4d(float* , int , int , int , int );
+vec_3d load_data(const string&, const int, const int, const int);
+void display_vec_1d(const vec_1d&, const int, const int);
+void display_vec_3d(const vec_3d&, const int, const int, const int, const int, const int, const int, const int, const int, const int);
+void display_vec_4d(const vec_4d&, const int, const int, const int, const int, const int, const int, const int, const int, const int, const int, const int, const int);
+vec_1d read_1d(const string&, const int);
+vec_2d read_weights_2d(const string&, const int, const int);
+vec_4d read_weights_4d(const string&, const int, const int, const int, const int);
+void release_vec_4d(vec_4d&);
+void release_vec_3d(vec_3d&);
+void release_vec_2d(vec_2d&);
+void release_vec_1d(vec_1d&);
+
+float* padding(float* input) {
+    vec_3d data = convert1dTo3d(input, INPUT_IMG_CHANNEL, INPUT_IMG_HEIGHT, INPUT_IMG_WIDTH);
+    // Pad data
+    vec_3d data_padded(INPUT_IMG_CHANNEL, vec_2d(PAD_IMG_SIZE, vec_1d(PAD_IMG_SIZE)));
+
+    for(int c = 0; c < INPUT_IMG_CHANNEL; c++) {
+        for(int h = 0; h < INPUT_IMG_HEIGHT; h++) {
+            for(int w = 0; w < INPUT_IMG_WIDTH; w++) {
+                data_padded[c][h + 2][w + 2] = data[c][h][w];
+            }
+        }
+    }
+
+    float *output = convert3dTo1d(data_padded, INPUT_IMG_CHANNEL, PAD_IMG_SIZE, PAD_IMG_SIZE);
+
+    return output;
+}
+
+vec_1d convert1dToTensor1d(float* input, int tensor_size) {
+    vec_1d output(tensor_size);
+
+    for (int i = 0; i < tensor_size; ++i) {
+        output[i] = input[i];
+    }
+
+    return output;
+}
+
+float* convertTensor1dTo1d(const vec_1d& input, int tensor_size) {
+    float* output = new float[tensor_size];
+
+    for (int i = 0; i < tensor_size; ++i) {
+        output[i] = input[i];
+    }
+
+    return output;
+}
+
+vec_2d convert1dTo2dvec(const float* input, int rows, int cols) {
+    vec_2d output(rows, vector<float>(cols));
+
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) {
+            output[i][j] = input[i * cols + j];
+        }
+    }
+
+    return output;
+}
+
+vec_3d convert1dTo3d(float* input, int img_channel, int img_height, int img_width) {
+    vec_3d output(img_channel, vector<vector<float> >(img_height, vector<float>(img_width)));
+
+    for(int c = 0; c < img_channel; c++) {
+        for(int h = 0; h < img_height; h++) {
+            for(int w = 0; w < img_width; w++) {
+                output[c][h][w] = input[c * img_width * img_height + h * img_width + w];
+            }
+        } 
+    }
+    
+    return output;
+}
+
+float* convert3dTo1d(const vec_3d& input, int img_channel, int img_height, int img_width) {
+    float* output = new float[img_channel * img_width * img_height];
+
+    for(int c = 0; c < img_channel; c++) {
+        for(int h = 0; h < img_height; h++) {
+            for(int w = 0; w < img_width; w++) {
+                output[c * img_width * img_height + h * img_width + w] = input[c][h][w];
+            }
+        }
+    }
+
+    return output;
+}
+
+vec_1d convert3dTo1dvec(const vec_3d& input, int img_channel, int img_height, int img_width) {
+    vec_1d output(img_channel * img_width * img_height);
+
+    for(int c = 0; c < img_channel; c++) {
+        for(int h = 0; h < img_height; h++) {
+            for(int w = 0; w < img_width; w++) {
+                output[c * img_width * img_height + h * img_width + w] = input[c][h][w];
+            }
+        }
+    }
+
+    return output;
+}
+
+vec_4d convert1dTo4d(float* input, int batch_size, int img_channel, int img_height, int img_width) {
+    vec_4d output(batch_size, vector<vector<vector<float> > >(img_channel, vector<vector<float> >(img_height, vector<float>( img_width))));
+
+    for(int b = 0; b < batch_size; b++) {
+        for(int c = 0; c < img_channel; c++) {
+            for(int h = 0; h < img_height; h++) {
+                for(int w = 0; w < img_width; w++) {
+                    output[b][c][h][w] = input[b * img_channel * img_height * img_width + c * img_height * img_width + h * img_width + w];
+                }
+            }
+        }
+    }
+
+    return output;
+}
+
+vec_3d load_data(const string& input_file_path, const int num_channels, const int height, const int width) {
+    ifstream input_file(input_file_path.c_str());
+    float value;
+    vec_3d data(num_channels, vec_2d(height, vec_1d(width, 0)));
+    for(int c = 0; c < num_channels; c++) {
+        for(int h = 0; h < height; h++) {
+            for(int w = 0; w < width; w++) {
+                input_file >> data[c][h][w];
+            }
+        }
+    }
+
+    input_file.close();
+
+    return data;
+}
+
+void display_vec_1d(const vec_1d& data, const int num_elements, const int start, const int end) {
+    for(int i = start; i < end && i < num_elements; i++) {
+        cout << data[i] << " ";
+    }
+    cout << endl;
+}
+
+void display_vec_3d(const vec_3d& data, const int num_channels, const int height, const int width, const int start_channel, const int end_channel, const int start_height, const int end_height, const int start_width, const int end_width) {
+    for(int c = start_channel; c < end_channel && c < num_channels; c++) {
+        cout << "Channel " << c << endl;
+        for(int h = start_height; h < end_height && h < height; h++) {
+            for(int w = start_width; w < end_width && w < width; w++) {
+                cout << data[c][h][w] << " ";
+            }
+            cout << endl;
+        }
+        cout << endl;
+    }
+}
+
+void display_vec_4d(const vec_4d& data, const int num_out_channels, const int num_in_channels, const int kernel_height, const int kernel_width, const int start_out_channel, const int end_out_channel, const int start_in_channel, const int end_in_channel, const int start_height, const int end_height, const int start_width, const int end_width) {
+    for(int o = start_out_channel; o < end_out_channel && o < num_out_channels; o++) {
+        cout << "Output Channel " << o << endl;
+        for(int i = start_in_channel; i < end_in_channel && i < num_in_channels; i++) {
+            cout << "Input Channel " << i << endl;
+            for(int h = start_height; h < end_height && h < kernel_height; h++) {
+                for(int w = start_width; w < end_width && w < kernel_width; w++) {
+                    cout << data[o][i][h][w] << " ";
+                }
+                cout << endl;
+            }
+            cout << endl;
+        }
+        cout << endl;
+    }
+}
+
+vec_1d read_1d(const string& file_path, const int num_elements) {
+    ifstream file(file_path.c_str());
+    vec_1d data(num_elements, 0);
+
+    for(int i = 0; i < num_elements; i++) {
+        file >> data[i];
+    }
+    file.close();
+    return data;
+}
+
+vec_2d read_weights_2d(const string& file_path, const int row, const int col) {
+    ifstream file(file_path.c_str());
+    vec_2d weights(row, vec_1d(col, 0));
+
+    for(int r = 0; r < row; r++) {
+        for(int c = 0; c < col; c++) {
+            file >> weights[r][c];
+        }
+    }
+
+    file.close();
+    return weights;
+}
+
+vec_4d read_weights_4d(const string& file_path, const int num_out_channels, const int num_in_channels, const int kernel_height, const int kernel_width) {
+    ifstream file(file_path.c_str());
+    vec_4d weights(num_out_channels, vec_3d(num_in_channels, vec_2d(kernel_height, vec_1d(kernel_width, 0))));
+
+    for(int o = 0; o < num_out_channels; o++) {
+        for(int i = 0; i < num_in_channels; i++) {
+            for(int h = 0; h < kernel_height; h++) {
+                for(int w = 0; w < kernel_width; w++) {
+                    file >> weights[o][i][h][w];
+                }
+            }
+        }
+    }
+
+    file.close();
+    return weights;
+}
+
+void release_vec_4d(vec_4d& data) {
+    for(int o = 0; o < data.size(); o++) {
+        for(int i = 0; i < data[o].size(); i++) {
+            for(int h = 0; h < data[o][i].size(); h++) {
+                data[o][i][h].clear();
+            }
+            data[o][i].clear();
+        }
+        data[o].clear();
+    }
+    data.clear();
+}
+
+void release_vec_3d(vec_3d& data) {
+    for(int c = 0; c < data.size(); c++) {
+        for(int h = 0; h < data[c].size(); h++) {
+            data[c][h].clear();
+        }
+        data[c].clear();
+    }
+    data.clear();
+}
+
+void release_vec_2d(vec_2d& data) {
+    for(int r = 0; r < data.size(); r++) {
+        data[r].clear();
+    }
+    data.clear();
+}
+
+void release_vec_1d(vec_1d& data) {
+    data.clear();
+}
+
+sc_lv<32> float_to_sc_lv32(float value) {
+    uint32_t as_int;
+    memcpy(&as_int, &value, sizeof(value));
+    sc_lv<32> result(as_int);
+    return result;
+}
+
+float sc_lv32_to_float(const sc_lv<32> lv) {
+    uint32_t int_val = lv.to_uint();
+    float f;
+    memcpy(&f, &int_val, sizeof(int_val));
+    return f;
+}
+
+#endif
